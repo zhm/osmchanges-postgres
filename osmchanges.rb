@@ -154,6 +154,7 @@ class OsmChanges < Thor
         CREATE INDEX index_changes_on_closed_at ON changes USING btree (closed_at);
         CREATE INDEX index_changes_on_created_by ON changes USING btree (created_by);
         CREATE INDEX index_records_on_comment_index ON changes USING gin (comment_index);
+        CREATE INDEX index_records_on_created_by_index ON changes USING gin (created_by_index);
 SQL
     end
 
@@ -161,6 +162,8 @@ SQL
       <<-SQL
         CREATE TRIGGER comment_index_trigger BEFORE INSERT OR UPDATE ON changes
         FOR EACH ROW EXECUTE PROCEDURE tsvector_update_trigger('comment_index', 'pg_catalog.english', 'comment');
+        CREATE TRIGGER created_by_index_trigger BEFORE INSERT OR UPDATE ON changes
+        FOR EACH ROW EXECUTE PROCEDURE tsvector_update_trigger('created_by_index', 'pg_catalog.english', 'created_by');
 SQL
     end
 
@@ -183,6 +186,7 @@ SQL
           comment text,
           comment_index tsvector,
           created_by text,
+          created_by_index tsvector,
           version character varying(255),
           build character varying(255),
           tags hstore,

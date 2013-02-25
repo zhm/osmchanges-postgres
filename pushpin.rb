@@ -6,37 +6,36 @@ require 'thor'
 require 'yaml'
 require 'active_support/all'
 require 'aws/s3'
+require 'pg'
+require 'sequel'
 
 S3_ACCESS_KEY = ""
 S3_SECRET     = ""
 S3_BUCKET     = ""
 
-include Mongo
-
 class Pushpin < Thor
 
+  desc "setup", "Setup the database"
+  method_option :host,     aliases: "-h", desc: "Postgres hostname"
+  method_option :database, aliases: "-d", desc: "Database name"
+  def setup
+    setup_database
+  end
+
   desc "stats", "Compute edit stats for @pushpinapp"
-  method_option :s3, :aliases => "-s", :desc => "Store stats json on S3", :required => false
+  method_option :s3,       aliases: "-s", desc: "Store stats json on S3", required: false
+  method_option :host,     aliases: "-h", desc: "Postgres hostname"
+  method_option :database, aliases: "-d", desc: "Database name"
   def stats
     compute_stats
-    store_stats_on_s3 if options[:s3]
+    # store_stats_on_s3 if options[:s3]
   end
 
   no_tasks do
-    def mongo_client
-      @client ||= MongoClient.new("localhost", 27017)
-    end
-
-    def mongo_database
-      @db ||= mongo_client.db("osm_changesets")
-    end
-
-    def changesets_collection
-      @changesets ||= mongo_database.collection("changesets")
-    end
-
-    def state_collection
-      @state_collection ||= mongo_database.collection("state")
+    def database
+      @db ||= Sequel.connect(adapter: 'postgres',
+                             host: options[:host] || 'localhost',
+                             database: options[:database] || 'osmchanges')
     end
 
     def stats_collection
@@ -44,30 +43,8 @@ class Pushpin < Thor
     end
 
     def compute_stats
-      map = %Q{
-        function() {
-          emit({ user: this.user}, { edits: 1 });
-        }
-      }
-
-      reduce = %Q{
-        function(key, values) {
-          var result = { edits: 0 };
-          values.forEach(function(value) {
-            result.edits += value.edits;
-          });
-          return result;
-        }
-      }
-
-      options = {
-        query: {
-          "tags.created_by" => /Pushpin/
-        },
-        out: { :replace => 'pushpin_users' }
-      }
-
-      changesets_collection.map_reduce(map, reduce, options)
+      delete_pushpin_users
+      insert_pushpin_users
 
       json = {
         top_users:    top_users,
@@ -93,20 +70,51 @@ class Pushpin < Thor
       )
     end
 
+    def delete_pushpin_users
+      database.run "DELETE FROM pushpin_users;"
+    end
+
+    def insert_pushpin_users
+      database.run <<-SQL
+      INSERT INTO pushpin_users (username, edits)
+      SELECT username, COUNT(1) FROM changes WHERE created_by_index @@ to_tsquery('Pushpin')
+      GROUP BY username;
+SQL
+    end
+
     def top_users
-      stats_collection.find.sort([['value.edits', :desc]]).to_a.map do |user|
-        { name: user['_id']['user'], edits: user['value']['edits'].to_i }
+      database["SELECT * FROM pushpin_users ORDER BY edits DESC"].all.to_a.map do |user|
+        { name: user[:username], edits: user[:edits].to_i }
       end
     end
 
     def recent_edits
-      changesets_collection.find({'tags.created_by' => /Pushpin/}).sort([['created_at', :desc]]).limit(500).map do |edit|
-        { name: edit['user'], tags: edit['tags'], date: edit['created_at'], id: edit['id']}
+      database["SELECT * FROM changes WHERE created_by_index @@ to_tsquery('Pushpin') ORDER BY created_at DESC LIMIT 500"].all.to_a.map do |edit|
+        { name: edit[:user], tags: edit[:tags], date: edit[:created_at], id: edit[:osm_id] }
       end
     end
 
     def total_edits
-      changesets_collection.find({'tags.created_by' => /Pushpin/}).count.to_i
+      database["SELECT COUNT(1) AS count FROM changes WHERE created_by_index @@ to_tsquery('Pushpin')"].all.first[:count]
+    end
+
+    def setup_database
+      database.run create_tables_statement
+    end
+
+    def create_tables_statement
+      <<-SQL
+        CREATE TABLE pushpin_users
+        (
+          id serial NOT NULL,
+          username character varying(255),
+          edits integer,
+          CONSTRAINT pushpin_users_pkey PRIMARY KEY (id)
+        )
+        WITH (
+          OIDS=FALSE
+        );
+SQL
     end
   end
 end
