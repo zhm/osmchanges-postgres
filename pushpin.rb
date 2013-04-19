@@ -9,6 +9,8 @@ require 'aws/s3'
 require 'pg'
 require 'sequel'
 
+Sequel.extension(:pg_hstore)
+
 S3_ACCESS_KEY = ""
 S3_SECRET     = ""
 S3_BUCKET     = ""
@@ -28,7 +30,7 @@ class Pushpin < Thor
   method_option :database, aliases: "-d", desc: "Database name"
   def stats
     compute_stats
-    # store_stats_on_s3 if options[:s3]
+    store_stats_on_s3 if options[:s3]
   end
 
   no_tasks do
@@ -90,7 +92,8 @@ SQL
 
     def recent_edits
       database["SELECT * FROM changes WHERE created_by_index @@ to_tsquery('Pushpin') ORDER BY created_at DESC LIMIT 500"].all.to_a.map do |edit|
-        { name: edit[:user], tags: edit[:tags], date: edit[:created_at], id: edit[:osm_id] }
+	created_at = Time.parse(edit[:created_at].strftime('%Y-%m-%dT%H:%M:%SZ')).utc
+        { name: edit[:username], tags: Sequel.hstore(edit[:tags]).to_hash, date: created_at, id: edit[:osm_id] }
       end
     end
 
