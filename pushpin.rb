@@ -51,7 +51,8 @@ class Pushpin < Thor
       json = {
         top_users:    top_users,
         recent_edits: recent_edits,
-        total_edits:  total_edits
+        total_edits:  total_edits,
+        edits_by_day: edits_by_day
       }
 
       File.open('stats.json', 'w') {|f| f.write(json.to_json)}
@@ -99,6 +100,10 @@ SQL
 
     def total_edits
       database["SELECT COUNT(1) AS count FROM changes WHERE created_by_index @@ to_tsquery('Pushpin')"].all.first[:count]
+    end
+
+    def edits_by_day
+      database["SELECT date_trunc('day', created_at) AS day, COUNT(1) as count FROM changes WHERE created_by_index @@ to_tsquery('Pushpin') GROUP BY date_trunc('day', created_at) ORDER BY date_trunc('day', created_at);"].all.map {|e| {day: e[:day].strftime('%F'), count: e[:count]}}
     end
 
     def setup_database
