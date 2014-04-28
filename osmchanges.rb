@@ -150,7 +150,7 @@ class OsmChanges < Thor
 
     def create_indexes_statement
       <<-SQL
-        CREATE INDEX index_changes_on_osm_id ON changes USING btree (osm_id);
+        CREATE UNIQUE INDEX index_changes_on_osm_id ON changes USING btree (osm_id);
         CREATE INDEX index_changes_on_username ON changes USING btree (username);
         CREATE INDEX index_changes_on_created_at ON changes USING btree (created_at);
         CREATE INDEX index_changes_on_closed_at ON changes USING btree (closed_at);
