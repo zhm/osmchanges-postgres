@@ -75,6 +75,8 @@ class OsmChanges < Thor
       source = open("http://planet.openstreetmap.org/replication/changesets/#{padded[0..2]}/#{padded[3..5]}/#{padded[6..8]}.osm.gz")
 
       parse_changesets(Zlib::GzipReader.new(source)) do |changeset|
+        next if changeset['open']
+
         if !changeset_exists(changeset['osm_id'])
           insert_changeset(changeset)
         end
