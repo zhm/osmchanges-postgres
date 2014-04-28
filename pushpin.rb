@@ -11,9 +11,13 @@ require 'sequel'
 
 Sequel.extension(:pg_hstore)
 
-S3_ACCESS_KEY = ""
-S3_SECRET     = ""
-S3_BUCKET     = ""
+if File.exist?('config.json')
+  config = JSON.parse(File.read('config.json'))
+
+  S3_ACCESS_KEY = config['s3_access_key']
+  S3_SECRET     = config['s3_secret']
+  S3_BUCKET     = config['s3_bucket']
+end
 
 class Pushpin < Thor
 
