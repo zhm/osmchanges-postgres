@@ -25,12 +25,30 @@ class OsmChanges < Thor
   method_option :file,     aliases: "-f", desc: "Input file", required: true
   method_option :host,     aliases: "-h", desc: "Postgres hostname"
   method_option :database, aliases: "-d", desc: "Database name"
+  method_option :pkgsize,  aliases: "-s", desc: "Package size"
+
   def import
+    tmp_changesets = []
+    previous_time = Time.now
+    throughput = 0
+    total_changesets = 0
+    package_size = Integer(options[:pkgsize]) || 5000
     parse_changesets(File.open(options[:file])) do |changeset|
-      if !changeset_exists(changeset['osm_id'])
-        insert_changeset(changeset)
-        puts "Creating changeset #{changeset['osm_id']}"
+      tmp_changesets << changeset
+      if tmp_changesets.count == package_size
+        total_changesets = total_changesets + package_size
+        current_time = Time.now
+        throughput = package_size / ( current_time - previous_time ).to_f
+        previous_time = current_time
+        printf "Inserting %d changesets (total %d), %.0f changesets/s\n", package_size, total_changesets, throughput
+        insert_changesets (tmp_changesets)
+        tmp_changesets.clear
       end
+    end
+    if tmp_changesets.count > 0
+      puts "Inserting remaining #{changesets.count} changesets"
+      insert_changesets (tmp_changesets)
+      tmp_changesets.clear
     end
   end
 
@@ -91,6 +109,10 @@ class OsmChanges < Thor
 
     def insert_changeset(changeset)
       database[:changes].insert(changeset)
+    end
+
+    def insert_changesets(changesets)
+      database[:changes].multi_insert(changesets)
     end
 
     def get_changeset_state
