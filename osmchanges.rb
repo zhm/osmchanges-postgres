@@ -32,13 +32,13 @@ class OsmChanges < Thor
     previous_time = Time.now
     throughput = 0
     total_changesets = 0
-    package_size = Integer(options[:pkgsize]) || 5000
+    package_size = Integer(options[:pkgsize] || 5000)
     parse_changesets(File.open(options[:file])) do |changeset|
       tmp_changesets << changeset
       if tmp_changesets.count == package_size
         total_changesets = total_changesets + package_size
         current_time = Time.now
-        throughput = package_size / ( current_time - previous_time ).to_f
+        throughput = package_size / ( current_time - previous_time ).to_f rescue 0
         previous_time = current_time
         printf "Inserting %d changesets (total %d), %.0f changesets/s\n", package_size, total_changesets, throughput
         insert_changesets (tmp_changesets)
@@ -46,10 +46,12 @@ class OsmChanges < Thor
       end
     end
     if tmp_changesets.count > 0
-      puts "Inserting remaining #{changesets.count} changesets"
+      total_changesets = total_changesets + tmp_changesets.count
+      printf "Inserting %d changesets (total %d)\n", tmp_changesets.count, total_changesets
       insert_changesets (tmp_changesets)
       tmp_changesets.clear
     end
+    puts "Import completed."
   end
 
   desc "sync", "Sync changesets from planet.osm.org"
