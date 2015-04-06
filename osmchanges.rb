@@ -202,6 +202,7 @@ SQL
           uid integer NOT NULL,
           username character varying(255),
           num_changes integer,
+          comments_count integer,
           open boolean,
           closed_at timestamp without time zone,
           created_at timestamp without time zone,
